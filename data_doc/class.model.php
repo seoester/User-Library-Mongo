@@ -13,6 +13,10 @@ abstract class Model {
 	}
 
 	public function __construct($param=null) {
+		global $config;
+		if (isset($config) && isset($config->DBPrefix) && static::$collectionName != null)
+			static::$collectionName = $config->DBPrefix . static::$collectionName;
+
 		$this->initialiseAttributes();
 		if (is_array($param))
 			$this->parse($param);
@@ -43,6 +47,13 @@ abstract class Model {
 			$attributeInfo = array_merge($defaultAttributeArray, $value);
 			$attributeInfo["attribute"] = $attribute;
 			
+			$this->_attributes[] = $attributeInfo;
+		}
+		$this->resetAttributes();
+	}
+	
+	public function resetAttributes() {
+		foreach ($this->_attributes as $attributeInfo) {
 			if ($attributeInfo["default"] === null) {
 				if ($attributeInfo["array"])
 					$this->$attribute = array();
@@ -50,10 +61,9 @@ abstract class Model {
 					$this->$attribute = null;
 			} else
 				$this->$attribute = $attributeInfo["default"];
-			$this->_attributes[] = $attributeInfo;
 		}
 	}
-	
+
 	public function recursiveParse($array, &$objects) {
 		$idOnlyObjects = array();
 		foreach ($this->_attributes as $attributeInfo) {
