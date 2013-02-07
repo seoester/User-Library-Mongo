@@ -15,12 +15,12 @@
 //     You should have received a copy of the GNU General Public License
 //     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-class Group extends Model {
-	protected static $collectionName = "groups";
-
-	protected $_created = false;
-	protected $_deleted = false;
+class UserSession extends Model {
+	protected static $collectionName = "usersessions";
 
 	public $id = array("type" => "MongoId", "field" => "_id");
-
+	public $user = array("type" => "User");
+	public $ipAddress = array();
+	public $lastAction = array();
+	public $sessionVars = array("array" => true, "type" => "SessionVariable");
 }
