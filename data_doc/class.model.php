@@ -12,6 +12,10 @@ abstract class Model {
 		return static::$collectionName !== null;
 	}
 
+	public static function getCollectionName() {
+		return static::$collectionName;
+	}
+
 	public function __construct($param=null) {
 		global $config;
 		if (isset($config) && isset($config->DBPrefix) && static::$collectionName != null)
