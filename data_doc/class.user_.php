@@ -115,7 +115,7 @@ class User {
 
 		$this->cleanOnlineTable();
 		if (isset($_COOKIE["USER_sessionid"]) && strlen($_COOKIE["USER_sessionid"]) > 0) {
- 			if (isset($_COOKIE['USER_cookie_string']) && strlen($_COOKIE['USER_cookie_string']) > 0 && $this->isUserInDataBase($_COOKIE["USER_sessionid"], false, $userid) && $this->checkCookieString($userid, $_COOKIE['USER_cookie_string'])) {
+			if (isset($_COOKIE['USER_cookie_string']) && strlen($_COOKIE['USER_cookie_string']) > 0 && $this->isUserInDatabase($_COOKIE["USER_sessionid"], false, $userid) && $this->checkCookieString($userid, $_COOKIE['USER_cookie_string'])) {
 				$this->hasOpenedOnlineId = true;
 				$this->id = $userid;
 				$this->updateOnlineTable();
@@ -1680,7 +1680,7 @@ class User {
 		$this->callPostLogoutHooks($userid, $onlineid);
 	}
 	
-	private function isUserInDataBase($session, $anon=false, &$userid=null) {
+	private function isUserInDatabase($session, $anon=false, &$userid=null) {
 		$dbCon = DatabaseConnection::getDatabaseConnection();
 		$settings = $this->settings;
 		
