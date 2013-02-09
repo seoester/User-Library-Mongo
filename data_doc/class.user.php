@@ -47,9 +47,9 @@ class User extends Model {
 	// Protected Variables
 	protected $_instantiated = false;
 	protected $_deleted = false;
-	protected $_registeredOnly = false;
 	protected $_hasOpenedOnlineId = false;
-	protected $_onlineId = false;
+	protected $_onlineId = null;
+	protected $_loggedIn = false;
 	protected $_hookClasses = array();
 
 	// Fields
@@ -72,13 +72,13 @@ class User extends Model {
 
 
 	//##################################################################
-	//######################   Initial methods    ######################
+	//####################   Initiation methods    #####################
 	//##################################################################
 
 
 	public function login($loginname, $password, $force=false) {
 		if ($this->created)
-			throw new Exception("There is already a user assigned");
+			throw new Exception("User object is already instantiated");
 		global $config;
 
 		if (! $config->loginEnabled)
@@ -107,11 +107,266 @@ class User extends Model {
 		return self::LOGIN_OK;
 	}
 
+	public function check() {
+		if ($this->_instantiated)
+			throw new Exception("User object is already instantiated");
+
+		$this->cleanOnlineTable();
+		if (isset($_COOKIE["USER_sessionid"]) && strlen($_COOKIE["USER_sessionid"]) > 0) {
+			$db = DatabaseConnection::getDatabase();
+			if (isset($_COOKIE['USER_cookie_string']) && strlen($_COOKIE['USER_cookie_string']) > 0
+					&& $this->isSessionInDatabase($_COOKIE["USER_sessionid"], $this->id)
+					&& $this->load($db)->secureCookieString == $_COOKIE['USER_cookie_string']) {
+				$this->_loggedIn = true;
+				$this->updateSessions();
+			} else
+				($this->isSessionInDatabase($_COOKIE["USER_sessionid"]))? $this->updateSessions() : $this->createSession(true);
+		} else
+			$this->createSession(true);
+		$this->_hasOpenedOnlineId = true;
+		$this->_onlineId = new MongoId($_COOKIE["USER_sessionid"]);
+		$this->_instantiated = true;
+	}
+
+	public function openWithId($userId) {
+		if ($this->_instantiated)
+			throw new Exception("User object is already instantiated");
+
+		if (is_string($userId))
+			$this->id = new MongoId($userId);
+		elseif (get_class($userId) == "MongoId")
+			$this->id = $userId
+		else
+			throw new Exception("Couldn't recognize format of userId");
+
+		$db = DatabaseConnection::getDatabase();
+		$this->load($db);
+	}
+
+	//##################################################################
+	//######################    Public methods    ######################
+	//##################################################################
+
+	public function logout() {
+		if (! $this->_instantiated || $this->_deleted || ! $this->_loggedIn)
+			throw new Exception("There is no user assigned");
+
+		$db = DatabaseConnection::getDatabase();
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+		
+		foreach ($this->userSessions as $key => $userSession)
+			if ($userSession->id == $this->_onlineId)
+				unset($this->userSessions[$key]);
+		$this->userSessions = array_values($this->userSessions);
+
+		$userSessionColl->remove(array("_id" => $this->_onlineId));
+		$this->save($db);
+
+		$this->_onlineId = null;
+		$this->_hasOpenedOnlineId = false;
+		$this->_loggedIn = false;
+
+		setcookie($_COOKIE["USER_sessionid"], ' ', time() - 3600);
+		setcookie('USER_cookie_string', ' ', time() - 3600);
+	}
+
+	public function block() {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if ($this->status == 12 || $this->status == 11)
+			return false;
+
+		if ($this->status == 100)
+			$this->status = 12
+		else
+			$this->status = 11;
+
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+		return true;
+	}
+
+	public function unblock() {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if ($this->status == 12)
+			$this->status = 100;
+		elseif ($this->status == 11)
+			$this->status = 1;
+		else
+			return false;
+
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+		return true;
+	}
+
+	public function getStatus() {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		$status = $this->status;
+
+		if ($status == 100)
+			return self::STATUS_NORMAL;
+		elseif ($status == 11 || $status == 12)
+			return self::STATUS_BLOCK;
+		elseif ($status == 1)
+			return self::STATUS_UNAPPROVED;
+		else
+			throw new Exception("Unknown status");
+	}
+
+	public function approve() {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if ($this->status == 11)
+			$this->status = 12;
+		elseif ($status == 12 || $status == 100)
+			return false;
+		else
+			$this->status = 100;
+
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+		return true;
+	}
+
+	public function hasOpenedOnlineId() {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no user assigned");
+
+		return $this->_hasOpenedOnlineId;
+	}
+
+	public function isLoggedIn() {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no user assigned");
+
+		return $this->_loggedIn;
+	}
+
+	public function setPassword($password) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no user assigned");
+
+		$db = DatabaseConnection::getDatabase();
+		$this->password = static::encodePassword($password, null);
+		$this->save($db);
+	}
+
+	public function checkPassword($password) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no user assigned");
+
+		return $this->password == static::encodePassword($password, $this->password);
+	}
+
+	public function inGroup($group) {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if (is_string($group))
+			$groupId = new MongoId($group);
+		elseif (get_class($group) == "MongoId")
+			$groupId = $group;
+		elseif (get_class($group) == "Group")
+			$groupId = $group->id;
+		else
+			throw new Exception("Couldn't recognize format of group");
+
+		foreach ($this->groups as $userGroup)
+			if ($userGroup->id == $groupId)
+				return true;
+
+		return false;
+	}
+
+	public function addGroup($group) {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if (is_string($group))
+			$groupId = new MongoId($group);
+		elseif (get_class($group) == "MongoId")
+			$groupId = $group;
+		elseif (get_class($group) == "Group")
+			$groupId = $group->id;
+		else
+			throw new Exception("Couldn't recognize format of group");
+
+		if ($this->inGroup($groupId))
+			return;
+
+		$this->groups[] = new Group($groupId);
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+	}
+
+	public function removeGroup($group) {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if (is_string($group))
+			$groupId = new MongoId($group);
+		elseif (get_class($group) == "MongoId")
+			$groupId = $group;
+		elseif (get_class($group) == "Group")
+			$groupId = $group->id;
+		else
+			throw new Exception("Couldn't recognize format of group");
+
+		if (! $this->inGroup($groupId))
+			return;
+
+		foreach ($this->groups as $key => $userGroup)
+			if ($userGroup->id == $groupId)
+				unset($this->groups[$key]);
+
+		$this->groups = array_values($this->groups);
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+	}
+
+	public function hasOwnPermission($permission) {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		return array_search($permission, $this->permissions) !== false;
+	}
+
+	public function addPermission($permission) {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if ($this->hasOwnPermission($permission))
+			return;
+
+		$this->permissions[] = $permission;
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+	}
+
+	public function removePermission($permission) {
+		if (! $this->_instantiated || $this->_deleted || $this->activated)
+			throw new Exception("There is no user assigned");
+
+		$key = array_search($permission, $this->permissions)
+		if ($key === false)
+			return;
+
+		unset($this->permissions[$key]);
+		$this->permissions = array_value($this->permissions);
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+	}
 
 	//##################################################################
 	//######################    Private methods   ######################
 	//##################################################################
-
 
 	private static function encodePassword($password, $passwordHash=null) {
 		global $config;
@@ -218,7 +473,7 @@ class User extends Model {
 		$this->blockedUntil = 0;
 		$this->_instantiated = true;
 
-		$this->insertInOnlineTable();
+		$this->createSession();
 		$this->_hasOpenedOnlineId = true;
 		$this->callPostLoginHooks($this->id, $this->_onlineId);
 
@@ -230,7 +485,7 @@ class User extends Model {
 	//##################################################################
 
 
-	private function insertInOnlineTable($anon=false) {
+	private function createSession($anon=false) {
 		$db = DatabaseConnection::getDatabase();
 		$userSession = new UserSession();		
 		
@@ -247,7 +502,56 @@ class User extends Model {
 		setcookie("USER_sessionid", $userSession->id->{'$id'}, 0, "/");
 		$_COOKIE["USER_sessionid"] = $userSession->id->{'$id'};
 		$this->_onlineId = $userSession->id;
-		$this->userSessions[] = $userSession;
+		if (! $anon)
+			$this->userSessions[] = $userSession;
+	}
+
+	private function cleanOnlineTable() {
+		global $config;
+		$db = DatabaseConnection::getDatabase();
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+
+		$minLastActionTime = time() - $config->autoLogoutTime;
+		$userSessionResults = $coll->find(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
+
+		foreach ($userSessionResults as $userSessionResult) {
+			$userSession = new UserSession($userSessionResult);
+			$user = $userSession->user;
+			$user->load($db);
+			foreach ($user->userSessions as $key => $userUserSession)
+				if ($userUserSession->id == $userSession->id)
+					unset($user->userSessions[$key]);
+			$user->userSessions = array_values($user->userSessions);
+			$user->save($db);
+		}
+		$coll->remove(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
+	}
+
+	private function isSessionInDatabase($sessionId, &$userId=null) {
+		global $config;
+		$db = DatabaseConnection::getDatabase();
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+
+		if ($config->secureSessions)
+			$result = $userSessionColl->findOne(array("_id" => new MongoId($sessionId), "ipAddress" => getIp()));
+		else
+			$result = $userSessionColl->findOne(array("_id" => new MongoId($sessionId)));
+
+		if ($result === null)
+			return false;
+		$userSession = new UserSession($result);
+		$userId = $userSession->user->id;
+		return true;
+	}
+
+	private function updateSessions() {
+		$db = DatabaseConnection::getDatabase();
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+
+		$result = $userSessionColl->findOne(array("_id" => new MongoId($_COOKIE["USER_sessionid"])));
+		$userSession = new UserSession($result);
+		$userSession->lastAction = time();
+		$userSession->save($db);
 	}
 
 }
