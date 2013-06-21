@@ -18,9 +18,46 @@
 class Group extends Model {
 	protected static $collectionName = "groups";
 
-	protected $_created = false;
+	protected $_instantiated = false;
 	protected $_deleted = false;
 
 	public $id = array("type" => "MongoId", "field" => "_id");
+	public $name = array()
+	public $permissions = array("array" => true);
+	public $users = array("array" => true, "type" => "User");
+
+	public function hasPermission($permission) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no group assigned");
+
+		return array_search($permission, $this->permissions) !== false;
+	}
+
+	public function addPermission($permission) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no group assigned");
+
+		if ($this->hasPermission($permission))
+			return;
+
+		$this->permissions[] = $permission;
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+	}
+
+	public function removePermission($permission) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no group assigned");
+
+		$key = array_search($permission, $this->permissions)
+		if ($key === false)
+			return;
+
+		unset($this->permissions[$key]);
+		$this->permissions = array_value($this->permissions);
+		$db = DatabaseConnection::getDatabase();
+		$this->save($db);
+	}
+
 
 }

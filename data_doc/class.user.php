@@ -47,8 +47,8 @@ class User extends Model {
 	// Protected Variables
 	protected $_instantiated = false;
 	protected $_deleted = false;
-	protected $_hasOpenedOnlineId = false;
-	protected $_onlineId = null;
+	protected $_hasOpenedSession = false;
+	protected $_sessionId = null;
 	protected $_loggedIn = false;
 	protected $_hookClasses = array();
 
@@ -69,7 +69,7 @@ class User extends Model {
 	public $permissions = array("array" => true);
 	public $groups = array("array" => true, "type" => "Group");
 	public $userSessions = array("array" => true, "type" => "UserSession");
-
+	public $customFields = array("array" => true, "type" => "VariableStorage");
 
 	//##################################################################
 	//####################   Initiation methods    #####################
@@ -77,7 +77,7 @@ class User extends Model {
 
 
 	public function login($loginname, $password, $force=false) {
-		if ($this->created)
+		if ($this->_instantiated)
 			throw new Exception("User object is already instantiated");
 		global $config;
 
@@ -111,7 +111,7 @@ class User extends Model {
 		if ($this->_instantiated)
 			throw new Exception("User object is already instantiated");
 
-		$this->cleanOnlineTable();
+		static::cleanOnlineTable();
 		if (isset($_COOKIE["USER_sessionid"]) && strlen($_COOKIE["USER_sessionid"]) > 0) {
 			$db = DatabaseConnection::getDatabase();
 			if (isset($_COOKIE['USER_cookie_string']) && strlen($_COOKIE['USER_cookie_string']) > 0
@@ -123,8 +123,8 @@ class User extends Model {
 				($this->isSessionInDatabase($_COOKIE["USER_sessionid"]))? $this->updateSessions() : $this->createSession(true);
 		} else
 			$this->createSession(true);
-		$this->_hasOpenedOnlineId = true;
-		$this->_onlineId = new MongoId($_COOKIE["USER_sessionid"]);
+		$this->_hasOpenedSession = true;
+		$this->_sessionId = new MongoId($_COOKIE["USER_sessionid"]);
 		$this->_instantiated = true;
 	}
 
@@ -151,27 +151,31 @@ class User extends Model {
 		if (! $this->_instantiated || $this->_deleted || ! $this->_loggedIn)
 			throw new Exception("There is no user assigned");
 
+		$this->callPreLogoutHooks($this->id, $this->_sessionId);
+
 		$db = DatabaseConnection::getDatabase();
 		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
-		
+
 		foreach ($this->userSessions as $key => $userSession)
-			if ($userSession->id == $this->_onlineId)
+			if ($userSession->id == $this->_sessionId)
 				unset($this->userSessions[$key]);
 		$this->userSessions = array_values($this->userSessions);
 
-		$userSessionColl->remove(array("_id" => $this->_onlineId));
+		$userSessionColl->remove(array('_id' => $this->_sessionId));
 		$this->save($db);
 
-		$this->_onlineId = null;
-		$this->_hasOpenedOnlineId = false;
+		$this->_sessionId = null;
+		$this->_hasOpenedSession = false;
 		$this->_loggedIn = false;
 
 		setcookie($_COOKIE["USER_sessionid"], ' ', time() - 3600);
 		setcookie('USER_cookie_string', ' ', time() - 3600);
+
+		$this->callPostLogoutHooks($this->id, $this->_sessionId);
 	}
 
 	public function block() {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if ($this->status == 12 || $this->status == 11)
@@ -188,7 +192,7 @@ class User extends Model {
 	}
 
 	public function unblock() {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if ($this->status == 12)
@@ -204,7 +208,7 @@ class User extends Model {
 	}
 
 	public function getStatus() {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		$status = $this->status;
@@ -220,7 +224,7 @@ class User extends Model {
 	}
 
 	public function approve() {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if ($this->status == 11)
@@ -235,11 +239,11 @@ class User extends Model {
 		return true;
 	}
 
-	public function hasOpenedOnlineId() {
+	public function hasOpenedSession() {
 		if (! $this->_instantiated || $this->_deleted)
 			throw new Exception("There is no user assigned");
 
-		return $this->_hasOpenedOnlineId;
+		return $this->_hasOpenedSession;
 	}
 
 	public function isLoggedIn() {
@@ -266,7 +270,7 @@ class User extends Model {
 	}
 
 	public function inGroup($group) {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if (is_string($group))
@@ -286,7 +290,7 @@ class User extends Model {
 	}
 
 	public function addGroup($group) {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if (is_string($group))
@@ -301,13 +305,18 @@ class User extends Model {
 		if ($this->inGroup($groupId))
 			return;
 
-		$this->groups[] = new Group($groupId);
 		$db = DatabaseConnection::getDatabase();
+		$group = new Group($groupId)
+		$group->load($db);
+		$group->users[] = $this;
+		$group->save($db);
+
+		$this->groups[] = $group;
 		$this->save($db);
 	}
 
 	public function removeGroup($group) {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if (is_string($group))
@@ -322,24 +331,35 @@ class User extends Model {
 		if (! $this->inGroup($groupId))
 			return;
 
+		$db = DatabaseConnection::getDatabase();
 		foreach ($this->groups as $key => $userGroup)
-			if ($userGroup->id == $groupId)
+			if ($userGroup->id == $groupId) {
 				unset($this->groups[$key]);
+				$userGroup->load($db);
+				foreach ($userGroup->users as $userKey => $groupUser)
+					if ($groupUser->id == $this->id)
+						unset($userGroup->users[$userKey]);
+				$userGroup->users = array_values($userGroup->users)
+				$userGroup->save($db);
+			}
 
 		$this->groups = array_values($this->groups);
-		$db = DatabaseConnection::getDatabase();
 		$this->save($db);
 	}
 
+	# Group Level?
+	# public function getInGroupLevel()
+	# public function setInGroupLevel()
+
 	public function hasOwnPermission($permission) {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		return array_search($permission, $this->permissions) !== false;
 	}
 
 	public function addPermission($permission) {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		if ($this->hasOwnPermission($permission))
@@ -351,7 +371,7 @@ class User extends Model {
 	}
 
 	public function removePermission($permission) {
-		if (! $this->_instantiated || $this->_deleted || $this->activated)
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
 		$key = array_search($permission, $this->permissions)
@@ -362,6 +382,217 @@ class User extends Model {
 		$this->permissions = array_value($this->permissions);
 		$db = DatabaseConnection::getDatabase();
 		$this->save($db);
+	}
+
+	public function hasPermission($permission) {
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
+			throw new Exception("There is no user assigned");
+
+		if (array_search($permission, $this->permissions) !== false)
+			return true;
+
+		$db = DatabaseConnection::getDatabase();
+		foreach ($this->groups as $group) {
+			$group->load($db, array("permissions" => true));
+
+			if (array_search($permission, $group->permissions) !== false)
+				return true;
+		}
+
+		return false;
+	}
+
+	public function setSessionVar($key, $value) {
+		if (! $this->_instantiated || $this->_deleted || ! $this->_hasOpenedSession)
+			throw new Exception("There is no user assigned");
+
+		$db = DatabaseConnection::getDatabase();
+		foreach ($this->userSession as $userSession)
+			if ($userSession->id == $this->_sessionId) {
+				$userSession->load($db);
+				$userSession->setSessionVar($key, $value);
+				return;
+			}
+		throw new Exception("User session couldn't be found");
+	}
+
+	public function getSessionVar($key) {
+		if (! $this->_instantiated || $this->_deleted || ! $this->_hasOpenedSession)
+			throw new Exception("There is no user assigned");
+
+		$db = DatabaseConnection::getDatabase();
+		foreach ($this->userSession as $userSession)
+			if ($userSession->id == $this->_sessionId) {
+				$userSession->load($db);
+				return $userSession->getSessionVar($key);
+			}
+		throw new Exception("User session couldn't be found");
+	}
+
+	public function deleteUser() {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no user assigned");
+
+		$db = DatabaseConnection::getDatabase();
+		$userColl = $db->selectCollection(static::getCollectionName());
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+
+		foreach ($this->groups as $userGroup) {
+			$userGroup->load($db);
+			foreach ($userGroup->users as $userKey => $groupUser)
+				if ($groupUser->id == $this->id)
+					unset($userGroup->users[$userKey]);
+			$userGroup->users = array_values($userGroup->users)
+			$userGroup->save($db);
+		}
+
+		foreach ($this->userSessions as $userSession)
+			$userSessionColl->remove(array('_id' => $userSession->id));
+
+		$userColl->remove(array('_id' => $this->id));
+	}
+
+	public function activate($activationCode) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no user assigned");
+
+		if ($this->activated)
+			return self::ACTIVATEEMAIL_ALREADYACTIVATED;
+
+		if ($activationCode == $this->activationCode) {
+			$this->activated = true;
+			$this->activationDate = time();
+			$db = DatabaseConnection::getDatabase();
+			$this->save($db);
+			return self::ACTIVATEEMAIL_OK;
+		} else
+			return self::ACTIVATEEMAIL_ACTIVATIONCODEWRONG;
+	}
+
+	public function openSession($session) {
+		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
+			throw new Exception("There is no user assigned");
+		
+		if (is_string($session))
+			$sessionId = new MongoId($session);
+		elseif (get_class($session) == "MongoId")
+			$sessionId = $session;
+		elseif (get_class($session) == "UserSession")
+			$sessionId = $session->id;
+		else
+			throw new Exception("Couldn't recognize format of session");
+
+		$sessionExists = false;
+		foreach ($this->userSessions as $userSession)
+			if ($userSession->id == $sessionId) {
+				$sessionExists = true;
+				break;
+			}
+
+		if (! $sessionExists)
+			throw new Exception("Session doesn't exist");
+		
+		$this->_hasOpenedSession = true;
+		$this->_sessionId = $sessionId;
+	}
+
+	public static function create($loginname, $username, $password, $email, $emailActivated=true, $approved="default", &$userId=null, $check=false) {
+		global $config;
+		if ($check) {
+			$credentialCheck = self::checkCredentials($loginname, $username, $email);
+			if ($credentialCheck != self::REGISTER_OK)
+				return $credentialCheck
+		}
+		
+		$activationCode = self::genCode($config->activationCodeLength);
+		if ($approved == "default") {
+			if ($config->needApproval)
+				$finalStatus = 1;
+			else
+				$finalStatus = 100;
+		} else {
+			if ($approved)
+				$finalStatus = 100;
+			else
+				$finalStatus = 1;
+		}
+		
+		$userId = self::writeUserIntoDatabase($loginname, $username, $password, $email, $finalStatus, $emailActivated, $activationCode);
+	}
+
+	public static function register($loginname, $username, $password, $email, $emailtext, $emailsubject, &$userId=null) {
+		global $config;
+		if (! $config->registerEnabled)
+			return self::REGISTER_REGISTERDISABLED;
+		$credentialCheck = self::checkCredentials($loginname, $username, $email);
+		if ($credentialCheck != self::REGISTER_OK)
+			return $credentialCheck
+		
+		$activationCode = self::genCode($config->activationCodeLength);
+		$status = ($config->needApproval)? 1 : 100;
+		
+		$userId = self::writeUserIntoDatabase($loginname, $username, $password, $email, $status, false, $activationCode);
+		
+		$emailtext = str_replace("[%actcode%]", $activationCode, $emailtext);
+		$emailtext = str_replace("[%username%]", $username, $emailtext);
+		$emailtext = str_replace("[%loginname%]", $loginname, $emailtext);
+		$emailtext = str_replace("[%password%]", $password, $emailtext);
+		$emailtext = str_replace("[%id%]", $userId, $emailtext);
+		
+		self::sendMail($config->sendMailAddress, $email, $emailsubject, $emailtext);
+		
+		return self::REGISTER_OK;
+	}
+
+	public static function getAllUsers() {
+		$db = DatabaseConnection::getDatabase();
+		$users = array();
+
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+		$results = $userSessionColl->find();
+		foreach ($results as $result)
+			$users[] = new User($result);
+				
+		return $users;
+	}
+	
+	public static function getAllOnlineUsers() {
+		$db = DatabaseConnection::getDatabase();
+		static::cleanOnlineTable();
+		$users = array();
+
+		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
+		$results = $userSessionColl->find(array("user" => array('$ne' => null)), array("user" => true));
+		foreach ($results as $result)
+			$users[] = new User($result->user->id);
+		
+		return $users;
+	}
+
+	public function setCustomField($key, $value) {
+		$db = DatabaseConnection::getDatabase();
+		foreach ($this->customFields as $customFieldKey => $customField)
+			if ($customField->key == $key) {
+				$this->$customFields[$customFieldKey] = $value;
+				$this->save($db);
+				return;
+			}
+		$customField = new VariableStorage();
+		$customField->key = $key;
+		$customField->value = $value;
+		$this->customFields[] = $customField;
+		$this->save($db);
+	}
+
+	public function getCustomField($key) {
+		foreach ($this->customFields as $customField)
+			if ($customField->key == $key)
+				return $customField->value;
+		return null;
+	}
+
+	public function appendHook(UserHooks $hookClass) {
+		$this->_hookClasses[] = $hookClass;
 	}
 
 	//##################################################################
@@ -402,9 +633,73 @@ class User extends Model {
 		}
 	}
 
-	private function callPostLoginHooks($userId, $onlineId) {
+	private static function checkCredentials($loginname, $username, $email) {
+		$db = DatabaseConnection::getDatabase();
+		$userColl = $db->selectCollection(static::getCollectionName());
+
+		$query = array('$or' =>
+			array("loginname" => $loginname, "username" => $username, "email" => $email)
+		);
+
+		$userArray = $userColl->findOne($query);
+		if ($userArray == null)
+			return self::REGISTER_OK;
+		$user = new User($userArray);
+
+		if ($user->loginname == $loginname)
+			return self::REGISTER_LOGINNAMEEXISTSALREADY;
+		elseif ($user->username == $username)
+			return self::REGISTER_USERNAMEEXISTSALREADY;
+		elseif ($user->email == $email)
+			return self::REGISTER_EMAILEXISTSALREADY;
+
+		return self::REGISTER_OK;
+	}
+
+	private static function writeUserIntoDatabase($loginname, $username, $password, $email, $status, $emailActivated=false, $activationCode=null) {
+		global $config;
+		$db = DatabaseConnection::getDatabase();
+		
+		$user = new User();
+
+		$user->loginname = $loginname;
+		$user->password = self::encodePassword($password);
+		$user->email = $email;
+		$user->secureCookieString = self::genCode(100);
+		$user->username = $username;
+		$user->registerDate = time();
+		$user->status = $status;
+		$user->activated = $emailActivated;
+		$user->activationCode = $activationCode;
+
+		$user->save($db);
+		return $user->id;
+	}
+
+	private static function sendMail($FROM, $TO, $SUBJECT, $TEXT) {
+		$mail = new Mail();
+		$mail->subject = $SUBJECT;
+		$mail->to = $TO;
+		$mail->body = $TEXT;
+		$mail->from = $FROM;
+		return $mail->send();
+	}
+
+	private function callPostLoginHooks($userId, $sessionId) {
 		foreach ($this->_hookClasses as $hookClass) {
-			$hookClass->login($userId, $onlineId);
+			$hookClass->login($userId, $sessionId);
+		}
+	}
+
+	private function callPreLogoutHooks($userId, $sessionId) {
+		foreach ($this->_hookClasses as $hookClass) {
+			$hookClass->preLogout($userId, $sessionId);
+		}
+	}
+	
+	private function callPostLogoutHooks($userId, $sessionId) {
+		foreach ($this->_hookClasses as $hookClass) {
+			$hookClass->postLogout($userId, $sessionId);
 		}
 	}
 
@@ -414,13 +709,13 @@ class User extends Model {
 
 	private function preCheck($loginname) {
 		global $config;
-		$coll = DatabaseConnection::getDatabase()->selectCollection(static::$collectionName);
+		$coll = DatabaseConnection::getDatabase()->selectCollection(static::getCollectionName());
 		
 		$findResult = $coll->findOne(array("loginname" => $loginname));
 		if ($findResult == null)
 			return self::LOGIN_USERDOESNOTEXISTS;
 
-		$this->parse($parse);
+		$this->parse($findResult);
 
 		if (! $this->activated)
 			return self::LOGIN_EMAILUNACTIVATED;
@@ -474,8 +769,8 @@ class User extends Model {
 		$this->_instantiated = true;
 
 		$this->createSession();
-		$this->_hasOpenedOnlineId = true;
-		$this->callPostLoginHooks($this->id, $this->_onlineId);
+		$this->_hasOpenedSession = true;
+		$this->callPostLoginHooks($this->id, $this->_sessionId);
 
 		$this->save($db);
 	}
@@ -484,29 +779,7 @@ class User extends Model {
 	//######################     Online table     ######################
 	//##################################################################
 
-
-	private function createSession($anon=false) {
-		$db = DatabaseConnection::getDatabase();
-		$userSession = new UserSession();		
-		
-		$userSession->ipAddress = getIp();
-		$userSession->lastAction = time();
-
-		if (! $anon)
-			$userSession->user = $this;
-		else
-			$userSession->user = null;
-
-		$userSession->save($db);
-
-		setcookie("USER_sessionid", $userSession->id->{'$id'}, 0, "/");
-		$_COOKIE["USER_sessionid"] = $userSession->id->{'$id'};
-		$this->_onlineId = $userSession->id;
-		if (! $anon)
-			$this->userSessions[] = $userSession;
-	}
-
-	private function cleanOnlineTable() {
+	private static function cleanOnlineTable() {
 		global $config;
 		$db = DatabaseConnection::getDatabase();
 		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
@@ -525,6 +798,28 @@ class User extends Model {
 			$user->save($db);
 		}
 		$coll->remove(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
+	}
+
+
+	private function createSession($anon=false) {
+		$db = DatabaseConnection::getDatabase();
+		$userSession = new UserSession();		
+		
+		$userSession->ipAddress = getIp();
+		$userSession->lastAction = time();
+
+		if (! $anon)
+			$userSession->user = $this;
+		else
+			$userSession->user = null;
+
+		$userSession->save($db);
+
+		setcookie("USER_sessionid", $userSession->id->{'$id'}, 0, "/");
+		$_COOKIE["USER_sessionid"] = $userSession->id->{'$id'};
+		$this->_sessionId = $userSession->id;
+		if (! $anon)
+			$this->userSessions[] = $userSession;
 	}
 
 	private function isSessionInDatabase($sessionId, &$userId=null) {
@@ -554,4 +849,12 @@ class User extends Model {
 		$userSession->save($db);
 	}
 
+}
+
+
+interface UserHooks {
+	public function postLogin($userId, $sessionId);
+	
+	public function preLogout($userId, $sessionId);
+	public function postLogout($userId, $sessionId);
 }
