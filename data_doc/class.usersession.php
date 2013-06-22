@@ -22,27 +22,23 @@ class UserSession extends Model {
 	public $user = array("type" => "User");
 	public $ipAddress = array();
 	public $lastAction = array();
-	public $sessionVars = array("array" => true, "type" => "VariableStorage");
+	public $sessionVars = array("array" => true);
 
 	public function setSessionVar($key, $value) {
 		$db = DatabaseConnection::getDatabase();
-		foreach ($this->sessionVars as $sessionVarKey => $sessionVar)
-			if ($sessionVar->key == $key) {
-				$this->$sessionVars[$sessionVarKey] = $value;
+		foreach ($this->sessionVars as $sessionVarKey => $sessionVarValue)
+			if ($sessionVarKey == $key) {
+				$this->sessionVars[$sessionVarKey] = $value;
 				$this->save($db);
 				return;
 			}
-		$sessionVar = new VariableStorage();
-		$sessionVar->key = $key;
-		$sessionVar->value = $value;
-		$this->sessionVars[] = $sessionVar;
+		$this->sessionVars[$key] = $value;
 		$this->save($db);
 	}
 
 	public function getSessionVar($key) {
-		foreach ($this->sessionVars as $sessionVar)
-			if ($sessionVar->key == $key)
-				return $sessionVar->value;
+		if (isset($this->sessionVars[$key]))
+			return $this->sessionVars[$key];
 		return null;
 	}
 }

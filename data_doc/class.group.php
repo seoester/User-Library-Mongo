@@ -25,7 +25,7 @@ class Group extends Model {
 	public $name = array();
 	public $permissions = array("array" => true);
 	public $users = array("array" => true, "type" => "User");
-	public $customFields = array("array" => true, "type" => "VariableStorage");
+	public $customFields = array("array" => true);
 
 	//##################################################################
 	//######################   Initial methods    ######################
@@ -40,7 +40,7 @@ class Group extends Model {
 		elseif (get_class($groupId) == "MongoId")
 			$this->id = $groupId;
 		else
-			throw new Exception("Couldn't recognize format of groupId");
+			throw new Exception("Couldn't detect format of groupId");
 
 		$db = DatabaseConnection::getDatabase();
 		$this->load($db);
@@ -133,16 +133,13 @@ class Group extends Model {
 			throw new Exception("There is no group assigned");
 
 		$db = DatabaseConnection::getDatabase();
-		foreach ($this->customFields as $customFieldKey => $customField)
-			if ($customField->key == $key) {
-				$this->$customFields[$customFieldKey] = $value;
+		foreach ($this->customFields as $customFieldKey => $customFieldValue)
+			if ($customFieldKey == $key) {
+				$this->customFields[$customFieldKey] = $value;
 				$this->save($db);
 				return;
 			}
-		$customField = new VariableStorage();
-		$customField->key = $key;
-		$customField->value = $value;
-		$this->customFields[] = $customField;
+		$this->customFields[$key] = $value;
 		$this->save($db);
 	}
 
@@ -150,9 +147,8 @@ class Group extends Model {
 		if (! $this->_instantiated || $this->_deleted)
 			throw new Exception("There is no group assigned");
 
-		foreach ($this->customFields as $customField)
-			if ($customField->key == $key)
-				return $customField->value;
+		if (isset($this->customFields[$key]))
+			return $this->customFields[$key];
 		return null;
 	}
 }

@@ -69,7 +69,7 @@ class User extends Model {
 	public $permissions = array("array" => true);
 	public $groups = array("array" => true, "type" => "Group");
 	public $userSessions = array("array" => true, "type" => "UserSession");
-	public $customFields = array("array" => true, "type" => "VariableStorage");
+	public $customFields = array("array" => true);
 
 	//##################################################################
 	//####################   Initiation methods    #####################
@@ -138,7 +138,7 @@ class User extends Model {
 		elseif (get_class($userId) == "MongoId")
 			$this->id = $userId;
 		else
-			throw new Exception("Couldn't recognize format of userId");
+			throw new Exception("Couldn't detect format of userId");
 
 		$db = DatabaseConnection::getDatabase();
 		$this->load($db);
@@ -233,14 +233,11 @@ class User extends Model {
 
 		if ($this->status == 11)
 			$this->status = 12;
-		elseif ($this->status == 12 || $this->status == 100)
-			return false;
-		else
+		elseif ($this->status != 12 && $this->status != 100)
 			$this->status = 100;
 
 		$db = DatabaseConnection::getDatabase();
 		$this->save($db);
-		return true;
 	}
 
 	public function hasOpenedSession() {
@@ -284,7 +281,7 @@ class User extends Model {
 		elseif (get_class($group) == "Group")
 			$groupId = $group->id;
 		else
-			throw new Exception("Couldn't recognize format of group");
+			throw new Exception("Couldn't detect format of group");
 
 		foreach ($this->groups as $userGroup)
 			if ($userGroup->id == $groupId)
@@ -304,7 +301,7 @@ class User extends Model {
 		elseif (get_class($group) == "Group")
 			$groupId = $group->id;
 		else
-			throw new Exception("Couldn't recognize format of group");
+			throw new Exception("Couldn't detect format of group");
 
 		if ($this->inGroup($groupId))
 			return;
@@ -330,7 +327,7 @@ class User extends Model {
 		elseif (get_class($group) == "Group")
 			$groupId = $group->id;
 		else
-			throw new Exception("Couldn't recognize format of group");
+			throw new Exception("Couldn't detect format of group");
 
 		if (! $this->inGroup($groupId))
 			return;
@@ -485,7 +482,7 @@ class User extends Model {
 		elseif (get_class($session) == "UserSession")
 			$sessionId = $session->id;
 		else
-			throw new Exception("Couldn't recognize format of session");
+			throw new Exception("Couldn't detect format of session");
 
 		$sessionExists = false;
 		foreach ($this->userSessions as $userSession)
@@ -583,16 +580,13 @@ class User extends Model {
 			throw new Exception("There is no group assigned");
 
 		$db = DatabaseConnection::getDatabase();
-		foreach ($this->customFields as $customFieldKey => $customField)
-			if ($customField->key == $key) {
-				$this->$customFields[$customFieldKey] = $value;
+		foreach ($this->customFields as $customFieldKey => $customFieldValue)
+			if ($customFieldKey == $key) {
+				$this->customFields[$customFieldKey] = $value;
 				$this->save($db);
 				return;
 			}
-		$customField = new VariableStorage();
-		$customField->key = $key;
-		$customField->value = $value;
-		$this->customFields[] = $customField;
+		$this->customFields[$key] = $value;
 		$this->save($db);
 	}
 
@@ -600,9 +594,8 @@ class User extends Model {
 		if (! $this->_instantiated || $this->_deleted)
 			throw new Exception("There is no group assigned");
 
-		foreach ($this->customFields as $customField)
-			if ($customField->key == $key)
-				return $customField->value;
+		if (isset($this->customFields[$key]))
+			return $this->customFields[$key];
 		return null;
 	}
 
@@ -652,9 +645,9 @@ class User extends Model {
 		$db = DatabaseConnection::getDatabase();
 		$userColl = $db->selectCollection(static::getCollectionName());
 
-		$query = array('$or' =>
-			array("loginname" => $loginname, "username" => $username, "email" => $email)
-		);
+		$query = array('$or' => array(
+			array("loginname" => $loginname), array("username" => $username), array("email" => $email)
+		));
 
 		$userArray = $userColl->findOne($query);
 		if ($userArray == null)
@@ -768,7 +761,7 @@ class User extends Model {
 		$this->save($db);
 	}
 
-	private function funishUnaLogin() {
+	private function finishUnaLogin() {
 		$db = DatabaseConnection::getDatabase();
 
 		$this->loginAttempts = 0;
