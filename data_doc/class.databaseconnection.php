@@ -21,8 +21,8 @@
 * @see Config
 */
 class DatabaseConnection {
-	protected $databaseConnection = null;
-	protected $databases = array();
+	protected static $databaseConnection = null;
+	protected static $databases = array();
 
 	/**
 	* Returns a database connection according to configuration.

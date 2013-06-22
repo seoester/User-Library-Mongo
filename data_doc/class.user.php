@@ -84,7 +84,7 @@ class User extends Model {
 		if (! $config->loginEnabled)
 			return self::LOGIN_LOGINDISABLED;
 
-		$status = $this->preCheck();
+		$status = $this->preCheck($loginname);
 		if ($status != self::LOGIN_OK) {
 			$this->resetAttributes();
 			return $status;
@@ -116,6 +116,7 @@ class User extends Model {
 			$db = DatabaseConnection::getDatabase();
 			if (isset($_COOKIE['USER_cookie_string']) && strlen($_COOKIE['USER_cookie_string']) > 0
 					&& $this->isSessionInDatabase($_COOKIE["USER_sessionid"], $this->id)
+					&& $this->id !== null
 					&& $this->load($db)->secureCookieString == $_COOKIE['USER_cookie_string']) {
 				$this->_loggedIn = true;
 				$this->updateSessions();
@@ -141,6 +142,7 @@ class User extends Model {
 
 		$db = DatabaseConnection::getDatabase();
 		$this->load($db);
+		$this->_instantiated = true;
 	}
 
 	//##################################################################
@@ -168,8 +170,10 @@ class User extends Model {
 		$this->_hasOpenedSession = false;
 		$this->_loggedIn = false;
 
-		setcookie($_COOKIE["USER_sessionid"], ' ', time() - 3600);
-		setcookie('USER_cookie_string', ' ', time() - 3600);
+		setcookie("USER_sessionid", ' ', time() - 3600);
+		setcookie("USER_cookie_string", ' ', time() - 3600);
+		unset($_COOKIE["USER_sessionid"]);
+		unset($_COOKIE["USER_cookie_string"]);
 
 		$this->callPostLogoutHooks($this->id, $this->_sessionId);
 	}
@@ -229,7 +233,7 @@ class User extends Model {
 
 		if ($this->status == 11)
 			$this->status = 12;
-		elseif ($status == 12 || $status == 100)
+		elseif ($this->status == 12 || $this->status == 100)
 			return false;
 		else
 			$this->status = 100;
@@ -407,7 +411,7 @@ class User extends Model {
 			throw new Exception("There is no user assigned");
 
 		$db = DatabaseConnection::getDatabase();
-		foreach ($this->userSession as $userSession)
+		foreach ($this->userSessions as $userSession)
 			if ($userSession->id == $this->_sessionId) {
 				$userSession->load($db);
 				$userSession->setSessionVar($key, $value);
@@ -421,7 +425,7 @@ class User extends Model {
 			throw new Exception("There is no user assigned");
 
 		$db = DatabaseConnection::getDatabase();
-		foreach ($this->userSession as $userSession)
+		foreach ($this->userSessions as $userSession)
 			if ($userSession->id == $this->_sessionId) {
 				$userSession->load($db);
 				return $userSession->getSessionVar($key);
@@ -505,7 +509,7 @@ class User extends Model {
 				return $credentialCheck;
 		}
 		
-		$activationCode = self::genCode($config->activationCodeLength);
+		$activationCode = genCode($config->activationCodeLength);
 		if ($approved == "default") {
 			if ($config->needApproval)
 				$finalStatus = 1;
@@ -529,7 +533,7 @@ class User extends Model {
 		if ($credentialCheck != self::REGISTER_OK)
 			return $credentialCheck;
 		
-		$activationCode = self::genCode($config->activationCodeLength);
+		$activationCode = genCode($config->activationCodeLength);
 		$status = ($config->needApproval)? 1 : 100;
 		
 		$userId = self::writeUserIntoDatabase($loginname, $username, $password, $email, $status, false, $activationCode);
@@ -619,7 +623,7 @@ class User extends Model {
 					$cpuDifficulty = $config->passwordCpuDifficulty;
 					$memDifficulty = $config->passwordMemDifficulty;
 					$parallelDifficulty = $config->passwordParallelDifficulty;
-					$salt = self::genCode($config->passwordSaltLength);
+					$salt = genCode($config->passwordSaltLength);
 				} else
 					list($cpuDifficulty, $memDifficulty, $parallelDifficulty, $salt) = explode('$', $passwordHash);
 				
@@ -631,7 +635,7 @@ class User extends Model {
 				if ($passwordHash == null) {
 					$roundInt = $config->passwordRounds;
 					$rounds = (strlen($roundInt) == 1)? "0$roundInt" : $roundInt;
-					$salt = self::genCode(22);
+					$salt = genCode(22);
 					$options = '$2a$' . $rounds . '$' . $salt;
 				} else
 					$options = substr($passwordHash, 0, 30);
@@ -676,7 +680,7 @@ class User extends Model {
 		$user->loginname = $loginname;
 		$user->password = self::encodePassword($password);
 		$user->email = $email;
-		$user->secureCookieString = self::genCode(100);
+		$user->secureCookieString = genCode(100);
 		$user->username = $username;
 		$user->registerDate = time();
 		$user->status = $status;
@@ -760,7 +764,7 @@ class User extends Model {
 		$db = DatabaseConnection::getDatabase();
 
 		$this->loginAttempts++;
-		$this->blockedUntil = ($this->loginattempts >= $config->maxLoginAttempts)? time() + $config->loginBlockTime : 0;
+		$this->blockedUntil = ($this->loginAttempts >= $config->maxLoginAttempts)? time() + $config->loginBlockTime : 0;
 		$this->save($db);
 	}
 
@@ -778,9 +782,12 @@ class User extends Model {
 		$this->loginAttempts = 0;
 		$this->blockedUntil = 0;
 		$this->_instantiated = true;
+		$this->_loggedIn = true;
 
 		$this->createSession();
 		$this->_hasOpenedSession = true;
+		setcookie("USER_cookie_string", $this->secureCookieString, 0, "/");
+		$_COOKIE["USER_cookie_string"] = $this->secureCookieString;
 		$this->callPostLoginHooks($this->id, $this->_sessionId);
 
 		$this->save($db);
@@ -796,7 +803,7 @@ class User extends Model {
 		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
 
 		$minLastActionTime = time() - $config->autoLogoutTime;
-		$userSessionResults = $coll->find(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
+		$userSessionResults = $userSessionColl->find(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$ne' => null)));
 
 		foreach ($userSessionResults as $userSessionResult) {
 			$userSession = new UserSession($userSessionResult);
@@ -808,7 +815,7 @@ class User extends Model {
 			$user->userSessions = array_values($user->userSessions);
 			$user->save($db);
 		}
-		$coll->remove(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
+		$userSessionColl->remove(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
 	}
 
 
@@ -846,7 +853,8 @@ class User extends Model {
 		if ($result === null)
 			return false;
 		$userSession = new UserSession($result);
-		$userId = $userSession->user->id;
+		if ($userSession->user !== null)
+			$userId = $userSession->user->id;
 		return true;
 	}
 

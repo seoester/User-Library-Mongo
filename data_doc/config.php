@@ -3,8 +3,8 @@
 $configArray = array(
 	"DBServer" => "localhost",
 	"DBPort" => "27017",
-	"DBDatabase" => "foodorder",
-	"DBPrefix" => "",
+	"DBDatabase" => "userlib",
+	"DBPrefix" => "", # useless so far
 
 	"loginEnabled" => true,
 	"registerEnabled" => true,
@@ -17,11 +17,11 @@ $configArray = array(
 	"passwordParallelDifficulty" => 1,
 	"passwordKeyLength" => 32,
 
-	"passwordRounds" => 10
+	"passwordRounds" => 10,
 
 	"activationCodeLength" => 20,
 	"sendMailAddress" => "noreply@localhost",
-	"autologoutTime" => 50000,
+	"autoLogoutTime" => 50000,
 	"maxLoginAttempts" => 5,
 	"loginBlockTime" => 3600,
 	"secureSessions" => false
