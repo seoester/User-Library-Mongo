@@ -135,7 +135,7 @@ class User extends Model {
 		if (is_string($userId))
 			$this->id = new MongoId($userId);
 		elseif (get_class($userId) == "MongoId")
-			$this->id = $userId
+			$this->id = $userId;
 		else
 			throw new Exception("Couldn't recognize format of userId");
 
@@ -182,7 +182,7 @@ class User extends Model {
 			return false;
 
 		if ($this->status == 100)
-			$this->status = 12
+			$this->status = 12;
 		else
 			$this->status = 11;
 
@@ -306,7 +306,7 @@ class User extends Model {
 			return;
 
 		$db = DatabaseConnection::getDatabase();
-		$group = new Group($groupId)
+		$group = new Group($groupId);
 		$group->load($db);
 		$group->users[] = $this;
 		$group->save($db);
@@ -339,7 +339,7 @@ class User extends Model {
 				foreach ($userGroup->users as $userKey => $groupUser)
 					if ($groupUser->id == $this->id)
 						unset($userGroup->users[$userKey]);
-				$userGroup->users = array_values($userGroup->users)
+				$userGroup->users = array_values($userGroup->users);
 				$userGroup->save($db);
 			}
 
@@ -374,7 +374,7 @@ class User extends Model {
 		if (! $this->_instantiated || $this->_deleted || ! $this->activated)
 			throw new Exception("There is no user assigned");
 
-		$key = array_search($permission, $this->permissions)
+		$key = array_search($permission, $this->permissions);
 		if ($key === false)
 			return;
 
@@ -442,7 +442,7 @@ class User extends Model {
 			foreach ($userGroup->users as $userKey => $groupUser)
 				if ($groupUser->id == $this->id)
 					unset($userGroup->users[$userKey]);
-			$userGroup->users = array_values($userGroup->users)
+			$userGroup->users = array_values($userGroup->users);
 			$userGroup->save($db);
 		}
 
@@ -502,7 +502,7 @@ class User extends Model {
 		if ($check) {
 			$credentialCheck = self::checkCredentials($loginname, $username, $email);
 			if ($credentialCheck != self::REGISTER_OK)
-				return $credentialCheck
+				return $credentialCheck;
 		}
 		
 		$activationCode = self::genCode($config->activationCodeLength);
@@ -527,7 +527,7 @@ class User extends Model {
 			return self::REGISTER_REGISTERDISABLED;
 		$credentialCheck = self::checkCredentials($loginname, $username, $email);
 		if ($credentialCheck != self::REGISTER_OK)
-			return $credentialCheck
+			return $credentialCheck;
 		
 		$activationCode = self::genCode($config->activationCodeLength);
 		$status = ($config->needApproval)? 1 : 100;

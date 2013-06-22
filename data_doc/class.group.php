@@ -22,7 +22,7 @@ class Group extends Model {
 	protected $_deleted = false;
 
 	public $id = array("type" => "MongoId", "field" => "_id");
-	public $name = array()
+	public $name = array();
 	public $permissions = array("array" => true);
 	public $users = array("array" => true, "type" => "User");
 	public $customFields = array("array" => true, "type" => "VariableStorage");
@@ -38,7 +38,7 @@ class Group extends Model {
 		if (is_string($groupId))
 			$this->id = new MongoId($groupId);
 		elseif (get_class($groupId) == "MongoId")
-			$this->id = $groupId
+			$this->id = $groupId;
 		else
 			throw new Exception("Couldn't recognize format of groupId");
 
@@ -73,7 +73,7 @@ class Group extends Model {
 		if (! $this->_instantiated || $this->_deleted)
 			throw new Exception("There is no group assigned");
 
-		$key = array_search($permission, $this->permissions)
+		$key = array_search($permission, $this->permissions);
 		if ($key === false)
 			return;
 
