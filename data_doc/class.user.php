@@ -450,6 +450,7 @@ class User extends Model {
 			$userSessionColl->remove(array('_id' => $userSession->id));
 
 		$userColl->remove(array('_id' => $this->id));
+		$this->_deleted = true;
 	}
 
 	public function activate($activationCode) {
@@ -544,12 +545,16 @@ class User extends Model {
 		return self::REGISTER_OK;
 	}
 
-	public static function getAllUsers() {
+	public static function getAllUsers($limit=null, $skip=null) {
 		$db = DatabaseConnection::getDatabase();
 		$users = array();
 
-		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
-		$results = $userSessionColl->find();
+		$userColl = $db->selectCollection(static::getCollectionName());
+		$results = $userColl->find();
+		if ($skip != null)
+			$results->skip($skip);
+		if ($limit != null)
+			$results->limit($limit);
 		foreach ($results as $result)
 			$users[] = new User($result);
 				
@@ -570,6 +575,9 @@ class User extends Model {
 	}
 
 	public function setCustomField($key, $value) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no group assigned");
+
 		$db = DatabaseConnection::getDatabase();
 		foreach ($this->customFields as $customFieldKey => $customField)
 			if ($customField->key == $key) {
@@ -585,6 +593,9 @@ class User extends Model {
 	}
 
 	public function getCustomField($key) {
+		if (! $this->_instantiated || $this->_deleted)
+			throw new Exception("There is no group assigned");
+
 		foreach ($this->customFields as $customField)
 			if ($customField->key == $key)
 				return $customField->value;
