@@ -380,7 +380,7 @@ class User extends Model {
 			return;
 
 		unset($this->permissions[$key]);
-		$this->permissions = array_value($this->permissions);
+		$this->permissions = array_values($this->permissions);
 		$db = DatabaseConnection::getDatabase();
 		$this->save($db);
 	}
@@ -796,19 +796,21 @@ class User extends Model {
 		$userSessionColl = $db->selectCollection(UserSession::getCollectionName());
 
 		$minLastActionTime = time() - $config->autoLogoutTime;
-		$userSessionResults = $userSessionColl->find(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$ne' => null)));
+		$userSessionResults = $userSessionColl->find(array("lastAction" => array('$lt' => $minLastActionTime)));
 
 		foreach ($userSessionResults as $userSessionResult) {
 			$userSession = new UserSession($userSessionResult);
 			$user = $userSession->user;
-			$user->load($db);
-			foreach ($user->userSessions as $key => $userUserSession)
-				if ($userUserSession->id == $userSession->id)
-					unset($user->userSessions[$key]);
-			$user->userSessions = array_values($user->userSessions);
-			$user->save($db);
+			if ($user !== null) {
+				$user->load($db);
+				foreach ($user->userSessions as $key => $userUserSession)
+					if ($userUserSession->id == $userSession->id)
+						unset($user->userSessions[$key]);
+				$user->userSessions = array_values($user->userSessions);
+				$user->save($db);
+			}
 		}
-		$userSessionColl->remove(array("lastAction" => array('$lt' => $minLastActionTime), "user" => array('$not' => null)));
+		$userSessionColl->remove(array("lastAction" => array('$lt' => $minLastActionTime)));
 	}
 
 

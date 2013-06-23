@@ -27,7 +27,7 @@ abstract class Model {
 		elseif ($param !== null)
 			$this->id = $param;
 	}
-	
+
 	public function getIdFieldAttribute() {
 		foreach ($this->_attributes as $attributeInfo) {
 			if ($attributeInfo["field"] === "_id")
@@ -171,7 +171,6 @@ abstract class Model {
 
 		if ($idType === "MongoId" && is_string($idValue))
 			$idValue = new MongoId($idValue);
-
 
 		$array = ($fields === null)? $coll->findOne(array("_id" => $idValue)) : $coll->findOne(array("_id" => $idValue), $fields);
 		if ($array === null)

@@ -44,6 +44,7 @@ class Group extends Model {
 
 		$db = DatabaseConnection::getDatabase();
 		$this->load($db);
+		$this->_instantiated = true;
 	}
 
 	//##################################################################
@@ -78,7 +79,7 @@ class Group extends Model {
 			return;
 
 		unset($this->permissions[$key]);
-		$this->permissions = array_value($this->permissions);
+		$this->permissions = array_values($this->permissions);
 		$db = DatabaseConnection::getDatabase();
 		$this->save($db);
 	}

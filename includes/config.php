@@ -10,7 +10,7 @@ $configArray = array(
 	"registerEnabled" => true,
 	"needApproval" => true,
 
-	"passwordAlgorithm" => "bcrypt",
+	"passwordAlgorithm" => "scrypt",
 	"passwordSaltLength" => 20,
 	"passwordCpuDifficulty" => 16384,
 	"passwordMemDifficulty" => 8,
@@ -21,7 +21,7 @@ $configArray = array(
 
 	"activationCodeLength" => 20,
 	"sendMailAddress" => "noreply@localhost",
-	"autoLogoutTime" => 50000,
+	"autoLogoutTime" => 86400,
 	"maxLoginAttempts" => 5,
 	"loginBlockTime" => 3600,
 	"secureSessions" => false
