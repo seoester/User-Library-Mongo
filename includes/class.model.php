@@ -58,8 +58,8 @@ abstract class Model {
 	
 	public function resetAttributes() {
 		foreach ($this->_attributes as $attributeInfo) {
+			$attribute = $attributeInfo["attribute"];
 			if ($attributeInfo["default"] === null) {
-				$attribute = $attributeInfo["attribute"];
 				if ($attributeInfo["array"])
 					$this->$attribute = array();
 				else
