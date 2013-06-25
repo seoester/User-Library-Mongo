@@ -26,7 +26,7 @@ if (checkformVar($_POST['submit'])) {
 			&& checkformVar($_POST['loginblocktime'])
 			&& checkformVar($_POST['securesessions'])) {
 		$error = formEvaluation();
-		
+
 		if (empty($error))
 			$info = "Installation successfull";
 	} else
@@ -34,16 +34,16 @@ if (checkformVar($_POST['submit'])) {
 }
 function formEvaluation() {
 	$error = "";
-	
+
 	$dbServer = $_POST['databaseserver'];
 	$dbName = $_POST['databasename'];
 	$dbUser = $_POST['databaseuser'];
 	$dbPassword = $_POST['databasepassword'];
 	$dbPrefix = $_POST['databaseprefix'];
-	
-    $loginEnabled = $_POST['loginenabled'];
-    $registerEnabled = $_POST['registerenabled'];
-    $needApproval = $_POST['needapproval'];
+
+	$loginEnabled = $_POST['loginenabled'];
+	$registerEnabled = $_POST['registerenabled'];
+	$needApproval = $_POST['needapproval'];
 	$passwordAlgorithm = $_POST['passwordalgorithm'];
 	$passwordSaltLength = $_POST['saltlength'];
 	$passwordCpuDifficulty = $_POST['cpudifficulty'];
@@ -51,50 +51,44 @@ function formEvaluation() {
 	$passwordParallelDifficulty = $_POST['parallelDifficulty'];
 	$passwordKeyLength = $_POST['keylength'];
 	$passwordRounds = $_POST['rounds'];
-    $lengthActivationcode = $_POST['activationcodelength'];
-    $sendEmail = $_POST['sendemail'];
-    $autologouttime = $_POST['autologouttime'];
+	$lengthActivationcode = $_POST['activationcodelength'];
+	$sendEmail = $_POST['sendemail'];
+	$autologouttime = $_POST['autologouttime'];
 	$maxLoginAttempts = $_POST['maxloginattempts'];
 	$loginBlockTime = $_POST['loginblocktime'];
 	$securesessions = $_POST['securesessions'];
-	
-    $loginEnabled = convStringToBool($loginEnabled);
-    $registerEnabled = convStringToBool($registerEnabled);
-    $needApproval = convStringToBool($needApproval);
+
+	$loginEnabled = convStringToBool($loginEnabled);
+	$registerEnabled = convStringToBool($registerEnabled);
+	$needApproval = convStringToBool($needApproval);
 	$securesessions = convStringToBool($securesessions);
-	
-	
-    if ($loginEnabled === null)
-        return "Login has to be enabled or disabled";
-    if ($registerEnabled === null)
-        return "Registration has to be enabled or disabled";
-    if ($needApproval === null)
-        return "The approval of new users has to be enabled or disabled";
+
+	if ($loginEnabled === null)
+		return "Login has to be enabled or disabled";
+	if ($registerEnabled === null)
+		return "Registration has to be enabled or disabled";
+	if ($needApproval === null)
+		return "The approval of new users has to be enabled or disabled";
 	if ($securesessions === null)
-        return "Securesessions has to be enabled or disabled";
-	
-	
-    if (! is_numeric($lengthActivationcode))
-        return "The length of the activationcode has to be numeric";
-    if (! is_numeric($autologouttime))
-        return "The auto-logout-time has to be numeric";
-    if (! is_numeric($maxLoginAttempts))
-        return "The maximum amount of failed logins has to be numeric";
-    if (! is_numeric($loginBlockTime))
-        return "The blocking time has to be numeric";
-	
-    if (strlen($lengthActivationcode) < 0 || strlen($lengthActivationcode) > 50)
-        return "The length of the activationcode has to be between 0 and 50";
-    if (strlen($autologouttime) < 0)
-        return "The auto-logout-time has to be bigger than 0";
-    if (strlen($maxLoginAttempts) < 0)
-        return "The maximum amount of failed logins has to be bigger than 0";
-    if (strlen($loginBlockTime) < 0)
-        return "The blocking time has to be bigger than 0";
-	
-	$error = createDatabasetables($dbServer, $dbName, $dbUser, $dbPassword, $dbPrefix);
-	if (! empty($error))
-		return $error;
+		return "Securesessions has to be enabled or disabled";
+
+	if (! is_numeric($lengthActivationcode))
+		return "The length of the activationcode has to be numeric";
+	if (! is_numeric($autologouttime))
+		return "The auto-logout-time has to be numeric";
+	if (! is_numeric($maxLoginAttempts))
+		return "The maximum amount of failed logins has to be numeric";
+	if (! is_numeric($loginBlockTime))
+		return "The blocking time has to be numeric";
+
+	if (strlen($lengthActivationcode) < 0 || strlen($lengthActivationcode) > 50)
+		return "The length of the activationcode has to be between 0 and 50";
+	if (strlen($autologouttime) < 0)
+		return "The auto-logout-time has to be bigger than 0";
+	if (strlen($maxLoginAttempts) < 0)
+		return "The maximum amount of failed logins has to be bigger than 0";
+	if (strlen($loginBlockTime) < 0)
+		return "The blocking time has to be bigger than 0";
 
 	$error = createSettingFile($dbServer,
 			$dbName,
@@ -119,96 +113,6 @@ function formEvaluation() {
 			$securesessions
 		);
 	
-	return $error;
-}
-
-function createDatabasetables($dbServer, $dbName, $dbUser, $dbPassword, $dbPrefix) {
-	$error = "";
-	
-	$mysqli = new mysqli($dbServer, $dbUser, $dbPassword, $dbName);
-	if ($mysqli->connect_error)
-		return "Error when trying to connect to the database:<br />" . mysqli_connect_error(). "<br />Please check the credentials";
-	
-	$createArray = array( 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'groups` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB  DEFAULT CHARSET=latin1 ;',
-'CREATE table IF NOT EXISTS `' . $dbPrefix . 'group_permissions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `groupid` int(11) NOT NULL,
-  `permissionid` int(11) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB  DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'onlineusers` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `userid` int(11) NOT NULL,
-  `session` varchar(250) NOT NULL,
-  `ipaddress` varchar(100) NOT NULL,
-  `lastact` int(11) NOT NULL,
-  PRIMARY KEY (`id`)
- ) DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'permissions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(250) NOT NULL,
-  PRIMARY KEY (`id`)
- ) DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'registrations` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `login` varchar(50) NOT NULL,
-  `username` varchar(100) NOT NULL,
-  `password` varchar(300) NOT NULL,
-  `email` varchar(150) NOT NULL,
-  `status` int(11) NOT NULL,
-  `activationcode` varchar(50) NOT NULL,
-  `secure_cookie_string` varchar(100) NOT NULL,
-  `registerdate` int(11) NOT NULL,
-  PRIMARY KEY (`id`)
- ) DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'sessionsvars` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `onlineid` int(11) NOT NULL,
-  `title` varchar(100) NOT NULL,
-  `value` varchar(3000) NOT NULL,
-  PRIMARY KEY (`id`)
- ) DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `login` varchar(50) NOT NULL,
-  `username` varchar(100) NOT NULL,
-  `password` varchar(300) NOT NULL,
-  `email` varchar(150) NOT NULL,
-  `status` int(11) NOT NULL,
-  `loginattempts` int(11) NOT NULL,
-  `blockeduntil` int(11) NOT NULL,
-  `secure_cookie_string` varchar(100) NOT NULL,
-  `registerdate` int(11) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `login` (`login`)
- ) DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'user_groups` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `userid` int(11) NOT NULL,
-  `groupid` int(11) NOT NULL,
-  `level` int(11) NOT NULL,
-  PRIMARY KEY (`id`)
- ) DEFAULT CHARSET=latin1 ;',
- 'CREATE table IF NOT EXISTS `' . $dbPrefix . 'user_permissions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `userid` int(11) NOT NULL,
-  `permissionid` int(11) NOT NULL,
-  PRIMARY KEY (`id`)
- ) DEFAULT CHARSET=latin1 ;' );
-	
-	foreach ($createArray as $value) {
-		$result = $mysqli->query($value);
-		if (! $result) {
-			$error = "Error when trying to create the mysql tables:<br />" . $mysqli->error;
-			break;
-		}
-	}
-	
-	$mysqli->close();
 	return $error;
 }
 
@@ -239,7 +143,7 @@ function createSettingFile(
 	$registerEnabled = convStringToBoolString($registerEnabled);
 	$needApproval = convStringToBoolString($needApproval);
 	$securesessions = convStringToBoolString($securesessions);
-	
+
 	$settingsString = <<<EOF
 <?php
 class UserLibrarySettings {
@@ -268,9 +172,9 @@ class UserLibrarySettings {
 ?>
 EOF;
 	$file = "data/settings.php";
-	
+
 	$numberOfBytes = file_put_contents($file, $settingsString);
-	
+
 	if ($numberOfBytes === false) {
 		return "Error when trying to write settings.php. Please check the file permissions";
 	}
@@ -292,12 +196,12 @@ function convStringToBoolString($bool) {
 }
 
 function convStringToBool($string) {
-    if ($string == "Yes")
-        return true;
-    elseif ($string == "No")
-        return false;
-    else
-        return null;
+	if ($string == "Yes")
+		return true;
+	elseif ($string == "No")
+		return false;
+	else
+		return null;
 }
 
 ?>
@@ -312,9 +216,9 @@ function convStringToBool($string) {
 
   <?php
 if (! empty($error))
-        echo "\n<span style=\"color:red;\">Error: $error</span>\n";
+		echo "\n<span style=\"color:red;\">Error: $error</span>\n";
 if (! empty($info))
-        echo "\n<span style=\"color:green;\">$info</span>\n";
+		echo "\n<span style=\"color:green;\">$info</span>\n";
 ?>
 <form action="./install.php" method="POST">
 	<fieldset>
